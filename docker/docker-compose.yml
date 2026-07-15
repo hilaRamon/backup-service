@@ -1,0 +1,9 @@
+services:
+  backup-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: backup-service
+    restart: unless-stopped
+    env_file:
+      - ../.env
