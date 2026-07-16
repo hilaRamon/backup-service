@@ -34,10 +34,10 @@ RUN npm ci --omit=dev || npm install --omit=dev
 
 COPY --from=build /app/dist ./dist
 
-RUN useradd --create-home --uid 1001 backup \
-  && chown -R backup:backup /app
+# Reuse the base image `node` user — a fixed UID 1001 conflicts (useradd exit 9).
+RUN chown -R node:node /app
 
-USER backup
+USER node
 
 ENV NODE_ENV=production
 
