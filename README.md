@@ -106,6 +106,74 @@ Site configs are compiled into the image at build time. After adding or editing 
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
+## Render Cron Job
+
+Deploy as a **Cron Job** using the existing Docker image. Native Node on Render is **not** supported: the runtime does not include `mongodump`, and this service requires MongoDB Database Tools (already installed in [`docker/Dockerfile`](docker/Dockerfile)).
+
+### Dashboard settings
+
+| Setting | Value |
+|---------|-------|
+| Service type | Cron Job |
+| Runtime | Docker |
+| Dockerfile path | `docker/Dockerfile` (build context: repo root) |
+| Docker Command | `node dist/src/index.js backup-all` |
+| Schedule | e.g. `0 2 * * *` (UTC) — set in the Render dashboard |
+
+Do **not** use `npm start` or run the image without a command override. The default Docker `CMD` starts **daemon mode** (`node-cron`), which is for long-running VPS deployments and does not exit.
+
+### Command
+
+```bash
+node dist/src/index.js backup-all
+```
+
+This runs every enabled site once, uploads to R2, enforces retention, then exits. If any site fails, the process exits with a non-zero status so Render marks the run as failed.
+
+### `BACKUP_CRON` vs Render schedule
+
+- `BACKUP_CRON` is used only in **daemon mode** (`npm start` / no CLI args).
+- On Render Cron, the schedule is defined in the **Render dashboard**. `BACKUP_CRON` is ignored for that deployment.
+
+### Required environment variables
+
+Set these as Render secret env vars (same names as [`.env.example`](.env.example)):
+
+| Variable | Purpose |
+|----------|---------|
+| `R2_ACCOUNT_ID` | Cloudflare account id |
+| `R2_ACCESS_KEY_ID` | R2 API token access key |
+| `R2_SECRET_ACCESS_KEY` | R2 API token secret |
+| `R2_BUCKET_NAME` | Target R2 bucket |
+| `BAGROT_MONGODB_URI` | MongoDB URI for bagrot (`uriEnv` in site config) |
+| `SIDURAVODA_MONGODB_URI` | MongoDB URI for siduravoda |
+| `GADASH_MONGODB_URI` | MongoDB URI for gadash |
+| `STORAGE_PROVIDER` | Optional; default `r2` |
+
+Add more `*_MONGODB_URI` values whenever you add a site config.
+
+### Cloudflare R2
+
+1. Create an R2 bucket (or reuse an existing one).
+2. Create an API token with Object Read & Write on that bucket.
+3. Put account id, access key, secret, and bucket name into the Render env vars above.
+
+### MongoDB Atlas network access
+
+Render Cron containers use public outbound IPs. On lower plans those IPs are often **not static**.
+
+- Allowlist Render’s outbound IPs if you have static egress, **or**
+- Temporarily allow `0.0.0.0/0` in Atlas Network Access (least preferred), **or**
+- Use a Render plan / setup that provides static outbound IPs and allowlist those.
+
+Atlas database users need at least `read` on each target database.
+
+### After deploy
+
+1. Push site configs under `config/sites/*.ts` (they are baked into the image at build time).
+2. Trigger a manual run from the Render dashboard to verify logs and R2 uploads.
+3. Confirm a failed site produces a failed cron run (non-zero exit).
+
 ## R2 object layout
 
 ```
@@ -157,7 +225,7 @@ mongorestore \
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `BACKUP_CRON` | No | Cron expression (default `0 2 * * *`) |
+| `BACKUP_CRON` | No | Daemon mode only (default `0 2 * * *`). Ignored by Render Cron — set the schedule in the Render dashboard instead. |
 | `STORAGE_PROVIDER` | No | Default `r2` |
 | `R2_ACCOUNT_ID` | Yes | Cloudflare account id |
 | `R2_ACCESS_KEY_ID` | Yes | R2 API token access key |

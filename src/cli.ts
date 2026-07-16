@@ -29,21 +29,43 @@ export async function runCli(argv: string[]): Promise<void> {
         logger.warn('No enabled sites found in config/sites/')
         return
       }
+
+      logger.info('Backup process started', {
+        command: 'backup-all',
+        siteCount: sites.length,
+        sites: sites.map((s) => s.id),
+      })
+
       const storage = createStorage()
       let failures = 0
+      const failedSites: string[] = []
+
       for (const site of sites) {
         try {
           await runBackup(site, storage)
         } catch (err) {
           failures++
+          failedSites.push(site.id)
           logger.error(`Backup failed for site ${site.id}`, {
             error: err instanceof Error ? err.message : String(err),
           })
         }
       }
+
       if (failures > 0) {
+        logger.error('backup-all finished with failures', {
+          failed: failures,
+          total: sites.length,
+          failedSites,
+          succeeded: sites.length - failures,
+        })
         throw new Error(`${failures} of ${sites.length} site backup(s) failed`)
       }
+
+      logger.info('backup-all completed successfully', {
+        siteCount: sites.length,
+        sites: sites.map((s) => s.id),
+      })
       break
     }
 
